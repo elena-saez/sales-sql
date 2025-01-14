@@ -1,0 +1,67 @@
+-- Task Price History
+
+drop table price_history;
+
+create table price_history (
+new_price_date date,
+product_id varchar2(11),
+price number
+);
+
+insert into price_history 
+(product_id, price)
+select id, price-25 from DE241207_product;
+
+update price_history 
+set new_price_date = '01-Jan-2022';
+
+insert into price_history 
+(product_id, price)
+select id, price from DE241207_product;
+
+update price_history
+set new_price_date = '01-Jan-2024' where new_price_date is null;
+
+alter table price_history
+add constraint price_history_fk foreign key (product_id) references DE241207_product (id);
+
+-- Task Sales value and Build a view
+
+select saledt, price, product from DE241207_sales join price_history
+on product_id = product
+where new_price_date = (
+    select max(new_price_date) from price_history
+    where product_id = product and new_price_date<=saledt
+);
+
+create or replace view sales_expanded as
+select saledt, employee, product, customer, qty, price
+from DE241207_sales join price_history
+on product_id = product
+where new_price_date = (
+    select max(new_price_date) from price_history
+    where product_id = product and new_price_date<=saledt
+);
+
+-- Task Analytics
+
+create or replace view cust_exceed as
+select
+    c.id, c.name, c.region, 
+    SUM(qty*price) AS customer_total_sales,
+    SUM(SUM(qty*price)) OVER (PARTITION BY c.region) AS total_region_sales,
+    SUM(SUM(qty*price)) OVER (PARTITION BY c.region) * 0.2 AS threshold
+from 
+    sales_expanded s
+join 
+    DE241207_customer c
+on 
+    s.customer = c.id
+where 
+    EXTRACT(YEAR FROM s.saledt) = 2023
+group by 
+    c.id, c.name, c.region;
+
+select id, name, region, customer_total_sales, threshold from cust_exceed
+where customer_total_sales > threshold;
+ 
